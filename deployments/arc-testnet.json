@@ -1,0 +1,14 @@
+{
+  "chainId": 5042002,
+  "rpcUrl": "https://rpc.testnet.arc.network",
+  "usdc": "0x3600000000000000000000000000000000000000",
+  "escrow": "0x70088f2c0644fba8fe48bbc1310ecd9feda70e7c",
+  "pool": "0xb9213179af47fb32d57c8e5c5b399afdac6b2dc9",
+  "deployedBy": "0x4Ba1e9e275EF61B56C99532D0066506436201D73",
+  "deployedAt": "2026-06-30T14:21:07.524Z",
+  "riskLimits": {
+    "maxReceivableTenorDays": 45,
+    "clientExposureCapUsdc": "5000",
+    "freelancerExposureCapUsdc": "5000"
+  }
+}
