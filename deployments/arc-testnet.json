@@ -2,13 +2,24 @@
   "chainId": 5042002,
   "rpcUrl": "https://rpc.testnet.arc.network",
   "usdc": "0x3600000000000000000000000000000000000000",
-  "escrow": "0x70088f2c0644fba8fe48bbc1310ecd9feda70e7c",
-  "pool": "0xb9213179af47fb32d57c8e5c5b399afdac6b2dc9",
+  "escrow": "0x605d5f089a27c6a4f7b1271bdc27d03e4336e314",
+  "pool": "0xc1fdb1507f489b5d426f4da398fd4da9d12e108f",
+  "underwriter": "0x3C06bc77b522cf1ee770ac10D910764c934093E2",
   "deployedBy": "0x4Ba1e9e275EF61B56C99532D0066506436201D73",
-  "deployedAt": "2026-06-30T14:21:07.524Z",
+  "deployedAt": "2026-07-24T09:35:34.127Z",
   "riskLimits": {
     "maxReceivableTenorDays": 45,
     "clientExposureCapUsdc": "5000",
     "freelancerExposureCapUsdc": "5000"
+  },
+  "agentIdentity": {
+    "registry": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+    "reputationRegistry": "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+    "agentId": "851709",
+    "owner": "0x3C06bc77b522cf1ee770ac10D910764c934093E2",
+    "metadataURI": "ipfs://bafkreibdi6623n3xpf7ymk62ckb4bo75o3qemwkpfvp5i25j66itxvsoei",
+    "registerTxHash": "0xd344557d14b3737404ed7e8845f8e6bf3fa4b52ba6dd58e74ea5573a62493ae3",
+    "reputationTxHash": null,
+    "registeredAt": "2026-07-24T09:38:18.259Z"
   }
 }
