@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { createPublicClient, http, parseUnits } from "viem";
-import { arcTestnet } from "@/lib/arc";
+import { parseUnits } from "viem";
 import { deployment, milestoneEscrowAbi, USDC_DECIMALS } from "@/lib/contracts";
+import { arcPublicClient } from "@/lib/server-chain";
 import { getContract, mutateContract } from "@/lib/server-store";
 import type { MilestoneStatus } from "@/lib/payfi-types";
+
+export const dynamic = "force-dynamic";
 
 const statusByIndex: MilestoneStatus[] = [
   "created_onchain",
@@ -15,10 +17,7 @@ const statusByIndex: MilestoneStatus[] = [
   "cancelled"
 ];
 
-const publicClient = createPublicClient({
-  chain: arcTestnet,
-  transport: http(arcTestnet.rpcUrls.default.http[0])
-});
+const publicClient = arcPublicClient;
 
 function sameAddress(a?: string, b?: string) {
   return Boolean(a && b && a.toLowerCase() === b.toLowerCase());

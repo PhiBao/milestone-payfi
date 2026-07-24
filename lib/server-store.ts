@@ -2,6 +2,19 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { makeId } from "./metadata";
 import type { Address, HexString, MilestoneStatus, ReceiptType, RiskReview, WorkContract } from "./payfi-types";
+import {
+  pgCreateContract,
+  pgGetContract,
+  pgListContracts,
+  pgMutateContract,
+  postgresConfigured
+} from "./server-store-pg";
+
+/**
+ * Dual-mode persistence:
+ * - DATABASE_URL / POSTGRES_URL set  -> durable Postgres (production deploys)
+ * - otherwise                        -> local .data/contracts.json (hackathon dev)
+ */
 
 const dataDir = path.join(process.cwd(), ".data");
 const dataPath = path.join(dataDir, "contracts.json");
@@ -26,24 +39,24 @@ async function writeStore(store: StoreShape) {
   await fs.writeFile(dataPath, JSON.stringify(store, null, 2));
 }
 
-export async function listContracts() {
+async function fsListContracts() {
   const store = await readStore();
   return [...store.contracts].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export async function getContract(id: string) {
+async function fsGetContract(id: string) {
   const store = await readStore();
   return store.contracts.find((contract) => contract.id === id) ?? null;
 }
 
-export async function createContract(contract: WorkContract) {
+async function fsCreateContract(contract: WorkContract) {
   const store = await readStore();
   store.contracts.unshift(contract);
   await writeStore(store);
   return contract;
 }
 
-export async function mutateContract(
+async function fsMutateContract(
   id: string,
   updater: (contract: WorkContract) => WorkContract
 ) {
@@ -55,6 +68,25 @@ export async function mutateContract(
   store.contracts[index] = updated;
   await writeStore(store);
   return updated;
+}
+
+export async function listContracts() {
+  return postgresConfigured() ? pgListContracts() : fsListContracts();
+}
+
+export async function getContract(id: string) {
+  return postgresConfigured() ? pgGetContract(id) : fsGetContract(id);
+}
+
+export async function createContract(contract: WorkContract) {
+  return postgresConfigured() ? pgCreateContract(contract) : fsCreateContract(contract);
+}
+
+export async function mutateContract(
+  id: string,
+  updater: (contract: WorkContract) => WorkContract
+) {
+  return postgresConfigured() ? pgMutateContract(id, updater) : fsMutateContract(id, updater);
 }
 
 export function appendReceipt(args: {

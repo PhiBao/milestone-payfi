@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getContract } from "@/lib/server-store";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const contract = await getContract(params.id);
 

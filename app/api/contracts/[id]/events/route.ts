@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { recoverMessageAddress } from "viem";
 import { formatUsdc } from "@/lib/format";
 import { verifyEventOnchain } from "@/lib/onchain-verify";
+import { clientKey, rateLimitOk } from "@/lib/rate-limit";
 import { eventSchema } from "@/lib/schemas";
 import { appendReceipt, getContract, mutateContract, updateMilestoneStatus } from "@/lib/server-store";
 import type { MilestoneStatus, ReceiptType, WorkContract } from "@/lib/payfi-types";
@@ -69,7 +71,11 @@ const transitions: Record<
   },
   scheduled_release: {
     from: ["approved", "early_paid"],
-    actor: "participant",
+    // Settlement is permissionless onchain (any keeper/settler agent can route
+    // it through pool.releaseReceivable). The receipt gate is the mandatory
+    // onchain verification below: sender, Released event, recipient, and final
+    // status must all match.
+    actor: "any",
     requiresTx: true
   },
   cancelled: {
@@ -110,6 +116,10 @@ function labelFor(contract: WorkContract, milestoneId: string, action: string, a
 }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
+  if (!rateLimitOk(clientKey(request, "post-event"), 30, 60_000)) {
+    return NextResponse.json({ error: "Too many events. Try again shortly." }, { status: 429 });
+  }
+
   const json = await request.json();
   const parsed = eventSchema.safeParse(json);
 
@@ -165,6 +175,26 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   if (!allowedActor) {
     return NextResponse.json({ error: "Actor is not allowed for this action" }, { status: 403 });
+  }
+
+  // `cancelled` is the only action without an onchain receipt gate, so it
+  // requires an EIP-191 wallet signature from the claimed participant.
+  if (payload.action === "cancelled") {
+    const signature = request.headers.get("x-payfi-signature");
+    if (!signature) {
+      return NextResponse.json({ error: "Wallet signature is required for cancellation." }, { status: 401 });
+    }
+    try {
+      const recovered = await recoverMessageAddress({
+        message: `milestone-payfi:${params.id}:${payload.milestoneId}:cancelled`,
+        signature: signature as `0x${string}`
+      });
+      if (!sameAddress(recovered, payload.actorAddress)) {
+        return NextResponse.json({ error: "Signature does not match the actor address." }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ error: "Invalid wallet signature." }, { status: 403 });
+    }
   }
 
   if (transition.requiresTx) {

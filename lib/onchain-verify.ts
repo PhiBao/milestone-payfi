@@ -1,12 +1,6 @@
-import {
-  createPublicClient,
-  decodeEventLog,
-  http,
-  parseUnits,
-  type Hex
-} from "viem";
-import { arcTestnet } from "./arc";
+import { decodeEventLog, parseUnits, type Hex } from "viem";
 import { deployment, milestoneEscrowAbi, receivablePoolAbi, USDC_DECIMALS } from "./contracts";
+import { arcPublicClient } from "./server-chain";
 import type { Milestone, WorkContract } from "./payfi-types";
 import type { RiskReview } from "./payfi-types";
 
@@ -30,10 +24,7 @@ const statusByAction: Record<string, number> = {
   cancelled: 6
 };
 
-const publicClient = createPublicClient({
-  chain: arcTestnet,
-  transport: http(arcTestnet.rpcUrls.default.http[0])
-});
+const publicClient = arcPublicClient;
 
 function sameAddress(a?: string, b?: string) {
   return Boolean(a && b && a.toLowerCase() === b.toLowerCase());
