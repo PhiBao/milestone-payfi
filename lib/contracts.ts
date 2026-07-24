@@ -27,6 +27,7 @@ export const milestoneEscrowAbi = parseAbi([
   "function release(uint256 milestoneId) external",
   "function cancelUnfunded(uint256 milestoneId) external",
   "function cancelExpiredUnsubmitted(uint256 milestoneId) external",
+  "function nextMilestoneId() external view returns (uint256)",
   "function milestones(uint256 milestoneId) external view returns (address freelancer, address client, uint256 amount, uint64 releaseAfter, uint8 status, address repaymentTarget, bytes32 metadataHash)"
 ]);
 
@@ -39,12 +40,14 @@ export const receivablePoolAbi = parseAbi([
   "event GuardrailsUpdated(uint256 utilizationCapBps, uint256 maxAdvance, uint256 discountBps, bool paused)",
   "event PricingUpdated(uint256 baseDiscountBps, uint256 annualizedDiscountBps, uint256 maxDiscountBps)",
   "event RiskLimitsUpdated(uint256 maxReceivableTenor, uint256 clientExposureCap, uint256 freelancerExposureCap)",
+  "event UnderwriterUpdated(address indexed underwriter)",
   "event RiskPolicySet(uint256 indexed milestoneId, uint8 riskTier, uint16 maxAdvanceBps, uint16 baseDiscountBps, uint16 annualizedDiscountBps, uint16 maxDiscountBps, bytes32 riskHash)",
   "function deposit(uint256 amount) external",
   "function withdraw(uint256 shares) external",
   "function requestAdvance(uint256 milestoneId) external",
   "function releaseReceivable(uint256 milestoneId) external",
   "function setReceivableRisk(uint256 milestoneId, uint8 riskTier, uint16 maxAdvanceBps, uint16 baseDiscountBps, uint16 annualizedDiscountBps, uint16 maxDiscountBps, bytes32 riskHash) external",
+  "function setUnderwriter(address underwriter) external",
   "function setRiskLimits(uint256 maxReceivableTenor, uint256 clientExposureCap, uint256 freelancerExposureCap) external",
   "function quoteAdvance(uint256 milestoneId) external view returns (uint256)",
   "function quoteDiscountBps(uint256 milestoneId) external view returns (uint256)",
@@ -54,6 +57,7 @@ export const receivablePoolAbi = parseAbi([
   "function outstandingByClient(address client) external view returns (uint256)",
   "function outstandingByFreelancer(address freelancer) external view returns (uint256)",
   "function owner() external view returns (address)",
+  "function underwriter() external view returns (address)",
   "function sharesOf(address owner) external view returns (uint256)",
   "function totalShares() external view returns (uint256)",
   "function maxReceivableTenor() external view returns (uint256)",
@@ -74,13 +78,15 @@ export interface DeploymentConfig {
   usdc?: Address;
   escrow?: Address;
   pool?: Address;
+  underwriter?: Address;
 }
 
 export const deployment: DeploymentConfig = {
   chainId: Number(process.env.NEXT_PUBLIC_ARC_CHAIN_ID || 5_042_002),
   usdc: process.env.NEXT_PUBLIC_USDC_ADDRESS as Address | undefined,
   escrow: process.env.NEXT_PUBLIC_ESCROW_ADDRESS as Address | undefined,
-  pool: process.env.NEXT_PUBLIC_POOL_ADDRESS as Address | undefined
+  pool: process.env.NEXT_PUBLIC_POOL_ADDRESS as Address | undefined,
+  underwriter: process.env.NEXT_PUBLIC_UNDERWRITER_ADDRESS as Address | undefined
 };
 
 export function contractsConfigured() {

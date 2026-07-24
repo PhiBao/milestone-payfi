@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BadgeCheck,
   Banknote,
+  Bot,
   BriefcaseBusiness,
   CheckCircle2,
   CircleDollarSign,
@@ -37,6 +38,7 @@ import {
   useWalletClient
 } from "wagmi";
 import { arcAddressUrl, arcTestnet, arcTxUrl, ARC_FAUCET_URL } from "@/lib/arc";
+import { BridgePanel } from "@/components/bridge-panel";
 import {
   contractsConfigured,
   deployment,
@@ -1318,6 +1320,8 @@ export function MilestonePayFiApp() {
 
           <PoolPanel snapshot={chainSnapshot} milestone={selectedMilestone} />
 
+          <AgentPanel contract={selectedContract} milestone={selectedMilestone} snapshot={chainSnapshot} />
+
           <details className="details-panel">
             <summary>
               <span>Funding readiness</span>
@@ -1329,6 +1333,14 @@ export function MilestonePayFiApp() {
               milestone={selectedMilestone}
               snapshot={chainSnapshot}
             />
+          </details>
+
+          <details className="details-panel">
+            <summary>
+              <span>Fund from any chain</span>
+              <Layers3 size={17} aria-hidden="true" />
+            </summary>
+            <BridgePanel />
           </details>
 
           <details className="details-panel proof-details" open>
@@ -1593,6 +1605,89 @@ function PoolPanel({
   );
 }
 
+function AgentPanel({
+  contract,
+  milestone,
+  snapshot
+}: {
+  contract: WorkContract | null;
+  milestone: Milestone | null;
+  snapshot: ChainSnapshot | null;
+}) {
+  const underwriter = deployment.underwriter;
+  if (!contract || !milestone) return null;
+
+  const isAgentActor = (actor: string) =>
+    actor.toLowerCase() !== contract.clientAddress.toLowerCase() &&
+    actor.toLowerCase() !== contract.freelancerAddress.toLowerCase();
+
+  const agentReceipts = contract.receipts
+    .filter((receipt) => isAgentActor(receipt.actorAddress) && receipt.txHash)
+    .slice(0, 3);
+
+  const policyByAgent = Boolean(
+    snapshot?.riskPolicyPublished &&
+      contract.receipts.some(
+        (receipt) =>
+          receipt.type === "risk_reviewed" &&
+          underwriter &&
+          receipt.actorAddress.toLowerCase() === underwriter.toLowerCase()
+      )
+  );
+
+  const awaitingAgent =
+    milestone.status === "approved" && snapshot?.riskPolicySupported && !snapshot.riskPolicyPublished;
+
+  return (
+    <section className="action-panel agent-panel">
+      <div className="section-heading compact">
+        <div>
+          <p className="eyebrow">Agentic layer</p>
+          <h2>Underwriter agent</h2>
+        </div>
+        <Bot size={20} aria-hidden="true" />
+      </div>
+      <p className="small-muted">
+        Risk scoring, policy publication, and settlement run autonomously on Arc — no human in the loop.
+      </p>
+      <div className="proof-list">
+        <ProofRow
+          label="Agent"
+          value={underwriter ? shortAddress(underwriter) : "Not delegated"}
+          href={underwriter ? arcAddressUrl(underwriter) : undefined}
+        />
+        <ProofRow
+          label="Identity"
+          value={underwriter ? "ERC-8004 on Arc" : "Pending registration"}
+          href={underwriter ? arcAddressUrl(underwriter) : undefined}
+        />
+      </div>
+      {policyByAgent && <p className="agent-status ok">Policy published autonomously by the agent.</p>}
+      {awaitingAgent && (
+        <p className="agent-status">Approved receivable detected — the agent scores and publishes the policy.</p>
+      )}
+      {!underwriter && (
+        <p className="quiet-action">Set NEXT_PUBLIC_UNDERWRITER_ADDRESS after deploying with UNDERWRITER_ADDRESS.</p>
+      )}
+      {agentReceipts.length > 0 && (
+        <div className="events agent-events">
+          {agentReceipts.map((receipt) => (
+            <div className="event" key={receipt.id}>
+              <span>{receipt.type === "risk_reviewed" ? "Underwriter" : "Settler"}</span>
+              <p>{receipt.label}</p>
+              {receipt.txHash && (
+                <a href={arcTxUrl(receipt.txHash)} target="_blank" rel="noreferrer">
+                  {shortAddress(receipt.txHash)}
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function RiskPolicyPanel({
   milestone,
   review,
@@ -1668,7 +1763,11 @@ function RiskPolicyPanel({
           >
             Publish risk policy
           </button>
-          {!isPoolOwner && <p className="quiet-action">Pool owner wallet must publish the risk policy.</p>}
+          {!isPoolOwner && (
+            <p className="quiet-action">
+              Published autonomously by the delegated underwriter agent, or manually by the pool owner.
+            </p>
+          )}
           {activeReview.hardBlock && <p className="field-error">This receivable is blocked from early payout.</p>}
         </>
       )}

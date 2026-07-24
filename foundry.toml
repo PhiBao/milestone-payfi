@@ -1,0 +1,6 @@
+[profile.default]
+src = "contracts"
+test = "test"
+out = "out"
+cache_path = "cache"
+fs_permissions = [{ access = "none", path = "." }]

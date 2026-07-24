@@ -978,6 +978,50 @@ a {
   line-height: 1.35;
 }
 
+.agent-status {
+  margin: 12px 0 0;
+  padding: 9px 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(36, 92, 255, 0.2);
+  border-radius: var(--radius);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.agent-status.ok {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: rgba(8, 118, 94, 0.2);
+}
+
+.agent-events {
+  margin-top: 12px;
+}
+
+.bridge-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.bridge-panel select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+}
+
+.bridge-steps {
+  margin-top: 4px;
+}
+
+
 .details-panel {
   box-shadow: none;
 }

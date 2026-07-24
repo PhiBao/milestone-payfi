@@ -35,7 +35,8 @@ const milestoneEscrowAbi = parseAbi([
 
 const receivablePoolAbi = parseAbi([
   "function deposit(uint256 amount) external",
-  "function setRiskLimits(uint256 maxReceivableTenor, uint256 clientExposureCap, uint256 freelancerExposureCap) external"
+  "function setRiskLimits(uint256 maxReceivableTenor, uint256 clientExposureCap, uint256 freelancerExposureCap) external",
+  "function setUnderwriter(address underwriter) external"
 ]);
 
 const rpcUrl = process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network";
@@ -49,6 +50,22 @@ const account = privateKeyToAccount(privateKey.startsWith("0x") ? privateKey : `
 const publicClient = createPublicClient({ chain: arcTestnet, transport: http(rpcUrl) });
 const walletClient = createWalletClient({ account, chain: arcTestnet, transport: http(rpcUrl) });
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/// The public Arc RPC rate-limits aggressively; wait for receipts with
+/// patient retries and pace consecutive transactions.
+async function waitTx(hash, attempts = 40) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await publicClient.waitForTransactionReceipt({ hash });
+    } catch (error) {
+      if (i === attempts - 1) throw error;
+      await sleep(4_000);
+    }
+  }
+  throw new Error(`Receipt not found for ${hash}`);
+}
+
 async function readArtifact(name) {
   return JSON.parse(await readFile(`artifacts/${name}.json`, "utf8"));
 }
@@ -61,7 +78,7 @@ async function deploy(name, args) {
     args
   });
   console.log(`${name} deploy tx: ${hash}`);
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  const receipt = await waitTx(hash); await sleep(1_500);
   console.log(`${name}: ${receipt.contractAddress}`);
   return receipt.contractAddress;
 }
@@ -75,8 +92,20 @@ let hash = await walletClient.writeContract({
   functionName: "setReceivablePool",
   args: [pool]
 });
-await publicClient.waitForTransactionReceipt({ hash });
+await waitTx(hash); await sleep(1_500);
 console.log(`Linked pool: ${hash}`);
+
+const underwriter = process.env.UNDERWRITER_ADDRESS;
+if (underwriter) {
+  hash = await walletClient.writeContract({
+    address: pool,
+    abi: receivablePoolAbi,
+    functionName: "setUnderwriter",
+    args: [underwriter]
+  });
+  await waitTx(hash); await sleep(1_500);
+  console.log(`Delegated underwriting to ${underwriter}: ${hash}`);
+}
 
 const riskMaxTenorDays = process.env.RISK_MAX_TENOR_DAYS;
 const riskClientCap = process.env.RISK_CLIENT_EXPOSURE_CAP_USDC;
@@ -92,7 +121,7 @@ if (riskMaxTenorDays || riskClientCap || riskFreelancerCap) {
     functionName: "setRiskLimits",
     args: [maxTenorSeconds, clientCapUnits, freelancerCapUnits]
   });
-  await publicClient.waitForTransactionReceipt({ hash });
+  await waitTx(hash); await sleep(1_500);
   console.log(
     `Risk limits: ${riskMaxTenorDays || "45"} days, client ${riskClientCap || "5000"} USDC, freelancer ${
       riskFreelancerCap || "5000"
@@ -109,7 +138,7 @@ if (seed && Number(seed) > 0) {
     functionName: "approve",
     args: [pool, seedUnits]
   });
-  await publicClient.waitForTransactionReceipt({ hash });
+  await waitTx(hash); await sleep(1_500);
 
   hash = await walletClient.writeContract({
     address: pool,
@@ -117,7 +146,7 @@ if (seed && Number(seed) > 0) {
     functionName: "deposit",
     args: [seedUnits]
   });
-  await publicClient.waitForTransactionReceipt({ hash });
+  await waitTx(hash); await sleep(1_500);
   console.log(`Seeded pool with ${seed} USDC: ${hash}`);
 }
 
@@ -131,6 +160,7 @@ await writeFile(
       usdc,
       escrow,
       pool,
+      underwriter: underwriter || null,
       deployedBy: account.address,
       deployedAt: new Date().toISOString(),
       riskLimits: {
@@ -148,3 +178,6 @@ console.log("\nAdd these to .env.local and restart Next:");
 console.log(`NEXT_PUBLIC_USDC_ADDRESS=${usdc}`);
 console.log(`NEXT_PUBLIC_ESCROW_ADDRESS=${escrow}`);
 console.log(`NEXT_PUBLIC_POOL_ADDRESS=${pool}`);
+if (underwriter) {
+  console.log(`NEXT_PUBLIC_UNDERWRITER_ADDRESS=${underwriter}`);
+}

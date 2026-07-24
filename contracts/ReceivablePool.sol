@@ -43,6 +43,7 @@ contract ReceivablePool {
     IERC20Transfer public immutable usdc;
     IMilestoneEscrow public immutable escrow;
     address public owner;
+    address public underwriter;
     bool public paused;
     uint256 public outstanding;
     uint256 public utilizationCapBps = 6500;
@@ -70,6 +71,7 @@ contract ReceivablePool {
     event GuardrailsUpdated(uint256 utilizationCapBps, uint256 maxAdvance, uint256 discountBps, bool paused);
     event PricingUpdated(uint256 baseDiscountBps, uint256 annualizedDiscountBps, uint256 maxDiscountBps);
     event RiskLimitsUpdated(uint256 maxReceivableTenor, uint256 clientExposureCap, uint256 freelancerExposureCap);
+    event UnderwriterUpdated(address indexed underwriter);
     event RiskPolicySet(
         uint256 indexed milestoneId,
         uint8 riskTier,
@@ -83,6 +85,7 @@ contract ReceivablePool {
     error NotOwner();
     error NotEscrow();
     error NotFreelancer();
+    error NotRiskPublisher();
     error NotApproved();
     error PoolPaused();
     error CapExceeded();
@@ -103,6 +106,19 @@ contract ReceivablePool {
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
         _;
+    }
+
+    /// @notice Risk policies may be published by the pool owner or by the
+    ///         delegated underwriter (e.g. an autonomous underwriting agent).
+    modifier onlyRiskPublisher() {
+        if (msg.sender != owner && msg.sender != underwriter) revert NotRiskPublisher();
+        _;
+    }
+
+    /// @notice Owner delegates (or revokes with address(0)) the underwriter role.
+    function setUnderwriter(address underwriter_) external onlyOwner {
+        underwriter = underwriter_;
+        emit UnderwriterUpdated(underwriter_);
     }
 
     function deposit(uint256 amount) external {
@@ -247,7 +263,7 @@ contract ReceivablePool {
         uint16 annualizedDiscountBps_,
         uint16 maxDiscountBps_,
         bytes32 riskHash
-    ) external onlyOwner {
+    ) external onlyRiskPublisher {
         (address freelancer, address client,, uint64 releaseAfter, uint8 status,,) = escrow.milestones(milestoneId);
         if (status != 3) revert NotApproved();
         if (client == freelancer) revert FraudFlag();

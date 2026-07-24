@@ -44,6 +44,7 @@ const erc20Abi = parseAbi([
 
 const poolAbi = parseAbi([
   "function owner() external view returns (address)",
+  "function underwriter() external view returns (address)",
   "function releaseReceivable(uint256 milestoneId) external",
   "function requestAdvance(uint256 milestoneId) external",
   "function setReceivableRisk(uint256 milestoneId, uint8 riskTier, uint16 maxAdvanceBps, uint16 baseDiscountBps, uint16 annualizedDiscountBps, uint16 maxDiscountBps, bytes32 riskHash) external",
@@ -88,16 +89,53 @@ const ownerWallet = createWalletClient({ account: owner, chain: arcTestnet, tran
 const clientWallet = createWalletClient({ account: clientAccount, chain: arcTestnet, transport: http(rpcUrl) });
 const freelancerWallet = createWalletClient({ account: freelancerAccount, chain: arcTestnet, transport: http(rpcUrl) });
 
+// v3: when the pool has a delegated underwriter, the agent wallet publishes the
+// risk policy and a third-party settler triggers pool repayment.
+const underwriterPrivateKey = process.env.UNDERWRITER_PRIVATE_KEY;
+const underwriterAccount = underwriterPrivateKey ? accountFromKey(underwriterPrivateKey) : null;
+const underwriterWallet = underwriterAccount
+  ? createWalletClient({ account: underwriterAccount, chain: arcTestnet, transport: http(rpcUrl) })
+  : null;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/// The public Arc RPC rate-limits aggressively; retry reads with backoff.
+async function read(params, attempts = 15) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await publicClient.readContract(params);
+    } catch (error) {
+      if (i === attempts - 1) throw error;
+      await sleep(4_000);
+    }
+  }
+  throw new Error("read failed");
+}
+
+/// The public Arc RPC rate-limits aggressively; wait for receipts patiently.
+async function waitTx(hash, attempts = 40) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await publicClient.waitForTransactionReceipt({ hash });
+    } catch (error) {
+      if (i === attempts - 1) throw error;
+      await sleep(4_000);
+    }
+  }
+  throw new Error(`Receipt not found for ${hash}`);
+}
+
 async function writeContract(label, wallet, params) {
   const hash = await wallet.writeContract(params);
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  const receipt = await waitTx(hash);
   if (receipt.status !== "success") throw new Error(`${label} reverted: ${hash}`);
   console.log(`${label}: ${hash}`);
+  await sleep(1_500);
   return receipt;
 }
 
 async function readStatus(milestoneId) {
-  const milestone = await publicClient.readContract({
+  const milestone = await read({
     address: deployment.escrow,
     abi: escrowArtifact.abi,
     functionName: "milestones",
@@ -108,11 +146,20 @@ async function readStatus(milestoneId) {
 
 async function readOptional(label, params) {
   try {
-    return await publicClient.readContract(params);
+    return await read(params);
   } catch {
     console.warn(`${label}: unavailable on this deployed contract`);
     return null;
   }
+}
+
+async function readAll(entries) {
+  const results = [];
+  for (const entry of entries) {
+    results.push(await read(entry));
+    await sleep(600);
+  }
+  return results;
 }
 
 function assertStatus(actual, expected, label) {
@@ -136,56 +183,16 @@ const [
   poolOwner,
   clientOutstandingBefore,
   freelancerOutstandingBefore
-] = await Promise.all([
-  publicClient.readContract({
-    address: deployment.usdc,
-    abi: erc20Abi,
-    functionName: "decimals"
-  }),
-  publicClient.readContract({
-    address: deployment.usdc,
-    abi: erc20Abi,
-    functionName: "symbol"
-  }),
-  publicClient.readContract({
-    address: deployment.usdc,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [clientAccount.address]
-  }),
-  publicClient.readContract({
-    address: deployment.usdc,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [freelancerAccount.address]
-  }),
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "availableLiquidity"
-  }),
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "outstanding"
-  }),
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "owner"
-  }),
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "outstandingByClient",
-    args: [clientAccount.address]
-  }),
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "outstandingByFreelancer",
-    args: [freelancerAccount.address]
-  })
+] = await readAll([
+  { address: deployment.usdc, abi: erc20Abi, functionName: "decimals" },
+  { address: deployment.usdc, abi: erc20Abi, functionName: "symbol" },
+  { address: deployment.usdc, abi: erc20Abi, functionName: "balanceOf", args: [clientAccount.address] },
+  { address: deployment.usdc, abi: erc20Abi, functionName: "balanceOf", args: [freelancerAccount.address] },
+  { address: deployment.pool, abi: poolAbi, functionName: "availableLiquidity" },
+  { address: deployment.pool, abi: poolAbi, functionName: "outstanding" },
+  { address: deployment.pool, abi: poolAbi, functionName: "owner" },
+  { address: deployment.pool, abi: poolAbi, functionName: "outstandingByClient", args: [clientAccount.address] },
+  { address: deployment.pool, abi: poolAbi, functionName: "outstandingByFreelancer", args: [freelancerAccount.address] }
 ]);
 
 const amount = parseUnits(amountInput, decimals);
@@ -195,6 +202,26 @@ if (poolOwner.toLowerCase() !== owner.address.toLowerCase()) {
 if (clientBalanceBefore < amount) {
   throw new Error(`Client has ${formatUnits(clientBalanceBefore, decimals)} ${symbol}, needs ${amountInput}.`);
 }
+
+const delegatedUnderwriter = await readOptional("delegated underwriter", {
+  address: deployment.pool,
+  abi: poolAbi,
+  functionName: "underwriter"
+});
+const zeroAddress = "0x0000000000000000000000000000000000000000";
+const hasDelegatedUnderwriter = Boolean(
+  delegatedUnderwriter && delegatedUnderwriter.toLowerCase() !== zeroAddress
+);
+if (hasDelegatedUnderwriter && underwriterAccount) {
+  if (delegatedUnderwriter.toLowerCase() !== underwriterAccount.address.toLowerCase()) {
+    throw new Error(
+      `UNDERWRITER_PRIVATE_KEY resolves to ${underwriterAccount.address} but the pool delegated ${delegatedUnderwriter}.`
+    );
+  }
+}
+const riskPublisherWallet = hasDelegatedUnderwriter && underwriterWallet ? underwriterWallet : ownerWallet;
+const riskPublisherLabel = riskPublisherWallet === underwriterWallet ? "underwriter agent" : "pool owner";
+const settlerWallet = underwriterWallet ?? ownerWallet;
 
 const metadataHash = keccak256(
   toHex(
@@ -286,14 +313,14 @@ const riskHash = keccak256(
   )
 );
 
-await writeContract("publish risk policy", ownerWallet, {
+await writeContract(`publish risk policy (${riskPublisherLabel})`, riskPublisherWallet, {
   address: deployment.pool,
   abi: poolAbi,
   functionName: "setReceivableRisk",
   args: [milestoneId, 0, 9800, 80, 2400, 600, riskHash]
 });
 
-const riskPolicy = await publicClient.readContract({
+const riskPolicy = await read({
   address: deployment.pool,
   abi: poolAbi,
   functionName: "riskPolicies",
@@ -303,7 +330,7 @@ if (!riskPolicy[0] || Number(riskPolicy[1]) !== 0 || riskPolicy[6].toLowerCase()
   throw new Error("Published risk policy does not match the verifier payload.");
 }
 
-const quote = await publicClient.readContract({
+const quote = await read({
   address: deployment.pool,
   abi: poolAbi,
   functionName: "quoteAdvance",
@@ -327,7 +354,7 @@ await writeContract("request early payout", freelancerWallet, {
 assertStatus(await readStatus(milestoneId), 4, "early paid");
 
 try {
-  await writeContract("release scheduled payout via pool", ownerWallet, {
+  await writeContract("release scheduled payout via pool (settler agent)", settlerWallet, {
     address: deployment.pool,
     abi: poolAbi,
     functionName: "releaseReceivable",
@@ -350,41 +377,13 @@ const [
   freelancerOutstandingAfter,
   clientBalanceAfter,
   freelancerBalanceAfter
-] = await Promise.all([
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "availableLiquidity"
-  }),
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "outstanding"
-  }),
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "outstandingByClient",
-    args: [clientAccount.address]
-  }),
-  publicClient.readContract({
-    address: deployment.pool,
-    abi: poolAbi,
-    functionName: "outstandingByFreelancer",
-    args: [freelancerAccount.address]
-  }),
-  publicClient.readContract({
-    address: deployment.usdc,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [clientAccount.address]
-  }),
-  publicClient.readContract({
-    address: deployment.usdc,
-    abi: erc20Abi,
-    functionName: "balanceOf",
-    args: [freelancerAccount.address]
-  })
+] = await readAll([
+  { address: deployment.pool, abi: poolAbi, functionName: "availableLiquidity" },
+  { address: deployment.pool, abi: poolAbi, functionName: "outstanding" },
+  { address: deployment.pool, abi: poolAbi, functionName: "outstandingByClient", args: [clientAccount.address] },
+  { address: deployment.pool, abi: poolAbi, functionName: "outstandingByFreelancer", args: [freelancerAccount.address] },
+  { address: deployment.usdc, abi: erc20Abi, functionName: "balanceOf", args: [clientAccount.address] },
+  { address: deployment.usdc, abi: erc20Abi, functionName: "balanceOf", args: [freelancerAccount.address] }
 ]);
 
 if (outstandingAfter !== outstandingBefore) {
@@ -408,6 +407,9 @@ console.log(
       amountUsdc: formatUnits(amount, decimals),
       riskTier: "A",
       riskHash,
+      underwriter: hasDelegatedUnderwriter ? delegatedUnderwriter : null,
+      riskPolicyPublishedBy: riskPublisherLabel,
+      settledBy: settlerWallet === underwriterWallet ? "settler agent" : "pool owner",
       advanceQuoteUsdc: formatUnits(quote, decimals),
       quoteDiscountBps: quoteDiscountBps === null ? "legacy-flat-discount" : Number(quoteDiscountBps),
       poolBeforeUsdc: formatUnits(poolBefore, decimals),
