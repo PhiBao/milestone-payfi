@@ -831,7 +831,8 @@ a {
   margin-top: 6px;
   color: var(--ink);
   font-weight: 900;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
 
 .note {
@@ -904,6 +905,7 @@ a {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+  margin-top: 12px;
 }
 
 .quiet-action {
