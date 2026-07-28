@@ -978,6 +978,22 @@ a {
   line-height: 1.35;
 }
 
+.tier-a {
+  color: var(--success);
+}
+
+.tier-b {
+  color: var(--warning);
+}
+
+.tier-c {
+  color: var(--danger);
+}
+
+.tier-blocked {
+  color: var(--danger);
+}
+
 .agent-status {
   margin: 12px 0 0;
   padding: 9px 10px;

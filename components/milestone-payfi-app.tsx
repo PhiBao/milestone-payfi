@@ -277,29 +277,35 @@ export function MilestonePayFiApp() {
     }
 
     async function readPool<T>(functionName: string, args: readonly unknown[] = []) {
-      try {
-        return await readTx<T>(publicClient as PublicClient, {
-          address: deployment.pool!,
-          abi: receivablePoolAbi,
-          functionName,
-          args
-        });
-      } catch {
-        return null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          return await readTx<T>(publicClient as PublicClient, {
+            address: deployment.pool!,
+            abi: receivablePoolAbi,
+            functionName,
+            args
+          });
+        } catch {
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 2_000));
+        }
       }
+      return null;
     }
 
     async function readUsdc<T>(functionName: string, args: readonly unknown[] = []) {
-      try {
-        return await readTx<T>(publicClient as PublicClient, {
-          address: deployment.usdc!,
-          abi: erc20Abi,
-          functionName,
-          args
-        });
-      } catch {
-        return null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          return await readTx<T>(publicClient as PublicClient, {
+            address: deployment.usdc!,
+            abi: erc20Abi,
+            functionName,
+            args
+          });
+        } catch {
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 2_000));
+        }
       }
+      return null;
     }
 
     const [
@@ -1716,7 +1722,7 @@ function RiskPolicyPanel({
       <div className="section-heading compact">
         <div>
           <p className="eyebrow">Pool risk policy</p>
-          <h2>Tier {activeReview.tier}</h2>
+          <h2 className={`tier-${activeReview.tier.toLowerCase()}`}>Tier {activeReview.tier}</h2>
         </div>
         <ShieldCheck size={20} aria-hidden="true" />
       </div>
