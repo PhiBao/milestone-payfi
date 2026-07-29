@@ -555,25 +555,114 @@ export function MilestonePayFiApp() {
     args: Record<string, unknown> = {}
   ) {
     if (!address) throw new Error("Missing connected wallet address.");
-    const response = await fetch(`/api/contracts/${contract.id}/events`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        milestoneId: milestone.id,
-        action,
-        actorAddress: address,
-        ...args
-      })
-    });
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Could not persist event.");
+    // Optimistically update local React state before the API call, so the UI
+    // shows the correct next action even when the server store is unavailable
+    // (e.g. Vercel deploys without DATABASE_URL / POSTGRES_URL). The server-
+    // verified response replaces this optimistic version on success.
+    const localStatus: Record<string, Milestone["status"]> = {
+      onchain_created: "created_onchain",
+      client_funded: "funded",
+      work_submitted: "submitted",
+      client_approved: "approved",
+      risk_reviewed: "approved",
+      early_payout_taken: "early_paid",
+      scheduled_release: "released",
+      cancelled: "cancelled"
+    };
+    const localReceiptType: Record<string, string> = {
+      onchain_created: "onchain_created",
+      client_funded: "client_funded",
+      work_submitted: "work_submitted",
+      client_approved: "client_approved",
+      risk_reviewed: "risk_reviewed",
+      early_payout_taken: "early_payout_taken",
+      scheduled_release: "scheduled_release",
+      cancelled: "cancelled"
+    };
+    const localLabels: Record<string, string> = {
+      onchain_created: `${milestone.title} was created on Arc Testnet escrow.`,
+      client_funded: `${contract.clientName} funded ${milestone.title}.`,
+      work_submitted: `${contract.freelancerName} submitted work for ${milestone.title}.`,
+      client_approved: `${contract.clientName} approved ${milestone.title}; receivable born.`,
+      risk_reviewed: `Pool risk policy was published for ${milestone.title}.`,
+      early_payout_taken: `${contract.freelancerName} took early payout of ${milestone.title}.`,
+      scheduled_release: `${milestone.title} was released and settled on Arc Testnet.`,
+      cancelled: `${milestone.title} was cancelled.`
+    };
+    const now = new Date().toISOString();
+    const newStatus = localStatus[action];
+    const receiptType = localReceiptType[action];
+    const label = localLabels[action] || `${milestone.title} updated.`;
+
     setContracts((current) =>
-      current.map((item) => (item.id === contract.id ? data.contract : item))
+      current.map((item) => {
+        if (item.id !== contract.id) return item;
+        return {
+          ...item,
+          milestones: item.milestones.map((m) => {
+            if (m.id !== milestone.id) return m;
+            return {
+              ...m,
+              status: newStatus ?? m.status,
+              txHash: args.txHash ? (args.txHash as `0x${string}`) : m.txHash,
+              onchainId: args.onchainId ? (args.onchainId as string) : m.onchainId,
+              submissionNote: args.submissionNote ? (args.submissionNote as string) : m.submissionNote,
+              submissionUrl: args.submissionUrl ? (args.submissionUrl as string) : m.submissionUrl,
+              advanceUsdc: args.advanceUsdc ? (args.advanceUsdc as string) : m.advanceUsdc,
+              riskReview: args.riskReview ? (args.riskReview as import("@/lib/payfi-types").RiskReview) : m.riskReview
+            };
+          }),
+          receipts: [
+            {
+              id: ["r", Date.now().toString(36), Math.random().toString(36).slice(2, 8)].join("_"),
+              type: receiptType as import("@/lib/payfi-types").ReceiptType,
+              actorAddress: address,
+              label,
+              txHash: args.txHash as `0x${string}` | undefined,
+              createdAt: now
+            },
+            ...item.receipts
+          ]
+        };
+      })
     );
     setSelectedId(contract.id);
+
+    let serverContract: WorkContract | null = null;
+    try {
+      const response = await fetch(`/api/contracts/${contract.id}/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          milestoneId: milestone.id,
+          action,
+          actorAddress: address,
+          ...args
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        serverContract = data.contract as WorkContract;
+        setContracts((current) =>
+          current.map((item) => (item.id === contract.id ? serverContract! : item))
+        );
+        setSelectedId(contract.id);
+      } else {
+        throw new Error(data.error || "Could not persist event.");
+      }
+    } catch (serverError) {
+      const message = serverError instanceof Error ? serverError.message : String(serverError);
+      console.warn("Room event persisted locally; server store unavailable:", message);
+      setError(
+        `State saved in your browser, but the server store is unreachable. ` +
+          `On Vercel: set DATABASE_URL or POSTGRES_URL in the deployment env. ` +
+          `Current data will be lost on refresh. (${message})`
+      );
+    }
+
     await loadChainSnapshot();
-    return data.contract as WorkContract;
+    return serverContract ?? contract;
   }
 
   async function createContract(event: FormEvent<HTMLFormElement>) {
