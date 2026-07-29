@@ -1382,6 +1382,7 @@ export function MilestonePayFiApp() {
                       release(selectedContract, selectedMilestone).then(() => ({ hash: "0x" as Hex }))
                     )
                   }
+                  onSync={syncSelectedFromChain}
                 />
                 {pendingLabel && <p className="pending-line">{pendingLabel}. Confirm in wallet and wait for Arc confirmation.</p>}
               </>
@@ -1951,7 +1952,8 @@ function MilestoneActions({
   onSubmit,
   onApprove,
   onAdvance,
-  onRelease
+  onRelease,
+  onSync
 }: {
   milestone: Milestone;
   roleForWallet: string | null;
@@ -1964,6 +1966,7 @@ function MilestoneActions({
   onApprove: () => void;
   onAdvance: () => void;
   onRelease: () => void;
+  onSync?: () => void;
 }) {
   const isClient = roleForWallet === "client" || roleForWallet === "both";
   const isFreelancer = roleForWallet === "freelancer" || roleForWallet === "both";
@@ -2035,9 +2038,12 @@ function MilestoneActions({
         </div>
         {advanceBlocked && isFreelancer && (
           <p className="quiet-action">
-            Advance locked — risk policy not yet published onchain. The underwriter agent will score and publish it,
-            then click{" "}
-            <strong>Sync proof</strong> to refresh.
+            Advance locked — risk policy not yet published onchain. The underwriter agent will score and
+            publish it, then{" "}
+            <button className="inline-action" type="button" onClick={onSync}>
+              Sync proof
+            </button>{" "}
+            to refresh.
           </p>
         )}
         {!isParticipant && <p className="quiet-action">{roleHint}</p>}
