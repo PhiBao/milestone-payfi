@@ -2033,6 +2033,13 @@ function MilestoneActions({
             Release scheduled payout
           </button>
         </div>
+        {advanceBlocked && isFreelancer && (
+          <p className="quiet-action">
+            Advance locked — risk policy not yet published onchain. The underwriter agent will score and publish it,
+            then click{" "}
+            <strong>Sync proof</strong> to refresh.
+          </p>
+        )}
         {!isParticipant && <p className="quiet-action">{roleHint}</p>}
       </>
     );
