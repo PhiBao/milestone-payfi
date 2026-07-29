@@ -2054,7 +2054,7 @@ function MilestoneActions({
   if (milestone.status === "early_paid") {
     return (
       <>
-        <button className="secondary-action" disabled={disabled || !isParticipant} onClick={onRelease}>
+        <button className="secondary-action" disabled={disabled || !isParticipant} onClick={onRelease} style={{ marginTop: 12 }}>
           Settle pool repayment
         </button>
         {!isParticipant && <p className="quiet-action">Client or freelancer wallet can trigger escrow repayment after the due time.</p>}

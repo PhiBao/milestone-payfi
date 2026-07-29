@@ -805,6 +805,10 @@ a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.risk-panel .pool-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .room-facts svg {
   color: var(--accent);
 }
@@ -1333,6 +1337,7 @@ a {
   .journey-rail,
   .room-facts,
   .pool-grid,
+  .risk-panel .pool-grid,
   .receivable-terms,
   .role-narrative {
     grid-template-columns: 1fr;
